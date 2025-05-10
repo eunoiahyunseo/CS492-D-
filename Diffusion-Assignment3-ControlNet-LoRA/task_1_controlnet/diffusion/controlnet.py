@@ -59,7 +59,21 @@ def zero_convolution(
     # DO NOT change the code outside this part.
     # Return a zero-convolution layer,
     # with the weight & bias initialized as zeros.
-    module = None
+
+    module = nn.Conv2d(
+        in_channels=in_channels,
+        out_channels=out_channels,
+        kernel_size=kernel_size,
+        stride=stride,
+        padding=padding
+    )
+
+    # init weight, bias with 0
+    nn.init.zeros_(module.weight)
+
+    if module.bias is not None:
+        nn.init.zeros_(module.bias)
+
     ######## TODO (1) ########
 
     return module
@@ -460,6 +474,18 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # Initialize 'controlnet' using the pretrained 'unet' model
         # NOTE: Modules to initialize: 'conv_in', 'time_proj', 'time_embedding', 'down_blocks', 'mid_block'
 
+        # Initialize conv_in (input layer)
+        controlnet.conv_in.load_state_dict(unet.conv_in.state_dict())
+
+        # Initialize time project (time embedding)
+        controlnet.time_proj.load_state_dict(unet.time_proj.state_dict())
+        controlnet.time_embedding.load_state_dict(unet.time_embedding.state_dict())
+
+        for control_block, unet_block in zip(controlnet.down_blocks, unet.down_blocks):
+            control_block.load_state_dict(unet_block.state_dict())
+
+        controlnet.mid_block.load_state_dict(unet.mid_block.state_dict())
+
         ######## TODO (2) ########
 
         return controlnet
@@ -745,8 +771,14 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalModelMixin):
         # Apply zero-convolution to the residual features of each ControlNet block.
         # NOTE: Each 'controlnet_block' is used here.
 
-        down_block_res_samples = None
-        mid_block_res_sample = None
+        # result of residual output for blocks
+        down_block_res_samples = list(down_block_res_samples)
+
+        for i, (res_sample, zero_conv) in enumerate(zip(down_block_res_samples, self.controlnet_down_blocks)):
+            down_block_res_samples[i] = zero_conv(res_sample) # apply zero_conv with residual output
+
+        # apply with mid block
+        mid_block_res_sample = self.controlnet_mid_block(sample)
 
         ######## TODO (3) ########
 
